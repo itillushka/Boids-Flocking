@@ -51,34 +51,45 @@ def within_fov(b1, b2):
     direction = b1.velocity.angle_to(b2.position - b1.position)
     return abs(direction) <= FOV_ANGLE / 2
 
-def update_boids(boids):
+def update_boids(boids, rule_order):
     """Update the position and velocity of each boid based on the three rules."""
     for boid in boids:
-        # Collect neighbors within the view radius
         neighbors = [b for b in boids if b != boid and distance(boid, b) < VIEW_RADIUS and within_fov(boid, b)]
+        
+        # Initialize forces
+        avoid_vector = pygame.Vector2(0, 0)
+        match_velocity = pygame.Vector2(0, 0)
+        cohesion_vector = pygame.Vector2(0, 0)
 
         if neighbors:
-            # Rule 1: Collision Avoidance
-            avoid_vector = pygame.Vector2(0, 0)
-            for neighbor in neighbors:
-                if distance(boid, neighbor) < VIEW_RADIUS / 2:  # Tighter radius for avoidance
-                    avoid_vector -= (neighbor.position - boid.position)
+            # Apply rules dynamically based on the order
+            if "collision_avoidance" in rule_order:
+                for neighbor in neighbors:
+                    if distance(boid, neighbor) < VIEW_RADIUS / 2:
+                        avoid_vector -= (neighbor.position - boid.position)
+                avoid_vector *= 0.05
+            
+            if "velocity_matching" in rule_order:
+                for neighbor in neighbors:
+                    match_velocity += neighbor.velocity
+                match_velocity /= len(neighbors)
+                match_velocity *= 0.05
+            
+            if "flock_centering" in rule_order:
+                center_of_mass = pygame.Vector2(0, 0)
+                for neighbor in neighbors:
+                    center_of_mass += neighbor.position
+                center_of_mass /= len(neighbors)
+                cohesion_vector = (center_of_mass - boid.position) * 0.01
 
-            # Rule 2: Velocity Matching
-            match_velocity = pygame.Vector2(0, 0)
-            for neighbor in neighbors:
-                match_velocity += neighbor.velocity
-            match_velocity /= len(neighbors)
-
-            # Rule 3: Flock Centering
-            center_of_mass = pygame.Vector2(0, 0)
-            for neighbor in neighbors:
-                center_of_mass += neighbor.position
-            center_of_mass /= len(neighbors)
-            cohesion_vector = (center_of_mass - boid.position) * 0.01
-
-            # Combine forces with weights
-            boid.velocity += avoid_vector * 0.05 + match_velocity * 0.05 + cohesion_vector
+        # Apply the forces in the specified order
+        for rule in rule_order:
+            if rule == "collision_avoidance":
+                boid.velocity += avoid_vector
+            elif rule == "velocity_matching":
+                boid.velocity += match_velocity
+            elif rule == "flock_centering":
+                boid.velocity += cohesion_vector
 
         # Apply wind force
         boid.velocity += WIND_FORCE
@@ -91,7 +102,7 @@ def update_boids(boids):
         boid.move()
         boid.edges()
 
-# Main program
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -100,14 +111,25 @@ def main():
     # Create boids
     boids = [Boid(random.randint(0, WIDTH), random.randint(0, HEIGHT)) for _ in range(NUM_BOIDS)]
 
+    # Define rule orders for testing
+    rule_orders = [
+        ["collision_avoidance", "velocity_matching", "flock_centering"],
+        ["velocity_matching", "collision_avoidance", "flock_centering"],
+        ["flock_centering", "collision_avoidance", "velocity_matching"]
+    ]
+    current_order = 0
+
     running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            # Press space to change rule order
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                current_order = (current_order + 1) % len(rule_orders)
 
-        # Update boids
-        update_boids(boids)
+        # Update boids with the current rule order
+        update_boids(boids, rule_orders[current_order])
 
         # Draw everything
         screen.fill((0, 0, 0))
@@ -116,6 +138,7 @@ def main():
         pygame.display.flip()
 
         clock.tick(60)
+
 
     pygame.quit()
 
